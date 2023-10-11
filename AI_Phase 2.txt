@@ -1,0 +1,95 @@
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+from matplotlib import pyplot as plt
+df=pd.read_excel("/kaggle/input/market-basket-analysis/Assignment-1_Data.xlsx")
+df.info()
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 522064 entries, 0 to 522063
+Data columns (total 7 columns):
+ #   Column      Non-Null Count   Dtype         
+---  ------      --------------   -----         
+ 0   BillNo      522064 non-null  object        
+ 1   Itemname    520609 non-null  object        
+ 2   Quantity    522064 non-null  int64         
+ 3   Date        522064 non-null  datetime64[ns]
+ 4   Price       522064 non-null  float64       
+ 5   CustomerID  388023 non-null  float64       
+ 6   Country     522064 non-null  object        
+dtypes: datetime64[ns](1), float64(2), int64(1), object(3)
+memory usage: 27.9+ MB
+df.isnull().sum()
+df.dropna(subset=["Itemname"],inplace=True)
+df = df[df["Quantity"]>0]
+df.isnull().sum()
+df['CustomerID'].fillna(99999, inplace=True)
+df["SumPrice"]=df["Quantity"]*df["Price"]
+best_selling_items = df.groupby(['Country', 'Itemname']).agg({'Quantity': 'sum'}).reset_index()
+best_selling_items = best_selling_items.groupby('Country').apply(lambda x: x[x['Quantity'] == x['Quantity'].max()]).reset_index(drop=True)
+best_selling_items.sort_values("Quantity",ascending=False)
+total_sales_country = df.groupby(['Country']).agg({'SumPrice': 'sum'}).reset_index()
+total_sales_country = total_sales_country.sort_values('SumPrice', ascending=False).reset_index(drop=True)
+total_sales_country
+plt.bar(total_sales_country["Country"],total_sales_country["SumPrice"])
+plt.yscale('log')
+plt.ylabel('Quantity')
+plt.xticks(rotation=90)
+plt.show()
+only_uk = df[df["Country"]=="United Kingdom"]
+only_uk.groupby("Itemname")["Quantity"].sum().sort_values(ascending=False)
+total_sales_item = df.groupby(['Itemname']).agg({'Price': 'mean', 'Quantity': 'sum', 'SumPrice': 'sum'}).reset_index()
+
+# Create a new column with the count of rows for each group
+total_sales_item['Count'] = df.groupby(['Itemname']).size().values
+
+# Sort the dataframe by 'SumPrice' column in descending order
+total_sales_item = total_sales_item.sort_values("SumPrice", ascending=False)
+
+total_sales_item
+transactions = df.groupby(['BillNo'])['Itemname'].apply(list)
+transactions
+one_hot = pd.get_dummies(df['Itemname'])
+one_hot
+one_hot['BillNo']=df['BillNo']
+one_hot
+one_hot = one_hot.groupby('BillNo').sum()
+one_hot
+transaction_matrix = pd.merge(transactions, one_hot, on='BillNo')
+transaction_matrix
+transaction_matrix[one_hot.columns[:-1]] = (transaction_matrix[one_hot.columns[:-1]] >= 1).astype(int)
+transaction_matrix
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
+print(transaction_matrix.dtypes)
+transaction_matrix.iloc[:, 1:] = transaction_matrix.iloc[:, 1:].astype(bool)
+#Perform frequent itemset mining
+frequent_itemsets = apriori(transaction_matrix.iloc[:, 1:], min_support=0.01, use_colnames=True)
+frequent_itemsets
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1)
+rules
+rules.sort_values('lift', ascending=False).head(10)
+import mpld3
+
+# create scatter plot with x and y as lift and confidence values
+fig, ax = plt.subplots()
+scatter = ax.scatter(rules['lift'], rules['confidence'], alpha=0.5)
+
+# Define tooltips
+tooltips = []
+for i in range(len(rules)):
+    rule = rules.iloc[i]
+    tooltip = f"Rule: {rule['antecedents']} -> {rule['consequents']}\nSupport: {rule['support']:.3f}\nConfidence: {rule['confidence']:.3f}\nLift: {rule['lift']:.3f}"
+    tooltips.append(tooltip)
+mpld3.plugins.connect(fig, mpld3.plugins.PointHTMLTooltip(scatter, tooltips))
+
+# Set axis labels and title
+ax.set_xlabel("Lift")
+ax.set_ylabel("Confidence")
+ax.set_title("Association Rules Scatter Plot")
+
+# Show the plot
+mpld3.display()
+rules[(rules['lift'] > 40) & (rules['lift'] < 50)]
